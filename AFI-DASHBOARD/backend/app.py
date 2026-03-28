@@ -696,3 +696,7 @@ def credit_distribution():
         {"level":"Poor","count":int((css<40).sum()),"color":"#EF4444"}],
         "fraud_vs_normal":[{"name":"Normal","value":int((~flags).sum()),"color":"#22C55E"},
                            {"name":"Fraud","value":int(flags.sum()),"color":"#EF4444"}]}
+
+@app.get("/")
+def root():
+    return {"message": "AFI is running"}
