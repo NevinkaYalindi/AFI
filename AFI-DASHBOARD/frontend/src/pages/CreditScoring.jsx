@@ -12,7 +12,7 @@ import RiskBadge from '../components/RiskBadge'
 import axios from 'axios'
 import clsx from 'clsx'
 
-const BASE = '/api'
+const BASE = (import.meta.env.VITE_API_URL || '') + '/api'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
