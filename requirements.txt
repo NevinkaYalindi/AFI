@@ -4,6 +4,6 @@ pydantic
 numpy
 pandas
 scikit-learn
-lightgbm
+lightgbm==4.2.0
 joblib
 python-multipart
