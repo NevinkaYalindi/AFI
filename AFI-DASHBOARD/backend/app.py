@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 
 app = FastAPI(title="AFI System API", version="5.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=[
-        "https://afi-frontend.onrender.com",
+        "https://afi-frontend-gdx8.onrender.com",
         "http://localhost:5173"], 
         allow_methods=["*"], allow_headers=["*"])
 
