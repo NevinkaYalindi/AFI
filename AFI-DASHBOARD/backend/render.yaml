@@ -15,4 +15,4 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://afi-backend.onrender.com
+        value: https://afi-frontend-gdx8.onrender.com
