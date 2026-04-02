@@ -31,7 +31,7 @@ MODEL_SEARCH_DIRS = [
     ".",
 ]
 
-SAMPLE_SIZE     = 20_000
+SAMPLE_SIZE     = int(os.environ.get("SAMPLE_SIZE", "5000"))   # set SAMPLE_SIZE=20000 in Render env if you want full set
 ACCOUNT_MIN_TXN = 3
 MAX_ACCOUNTS    = 40
 RANDOM_STATE    = 42
@@ -557,12 +557,12 @@ def _predict_batch(df_eng: pd.DataFrame, is_fraud_arr):
         except Exception as e:
             print(f"   Batch inference failed, using demo scoring: {e}")
 
-    # Demo path — vectorised calibrated scoring
+    # Demo path — convert once to records list, not 20K individual .iloc calls
     print("  ⚠ Using calibrated demo scoring")
     fps = np.zeros(n)
     css = np.zeros(n)
-    for i in range(n):
-        row_dict = df_eng.iloc[i].to_dict()
+    records = df_eng.to_dict("records")   # O(n) single pass — avoids O(n²) .iloc loop
+    for i, row_dict in enumerate(records):
         row_dict["tx_id"] = f"TX{i}"
         fp, cs = _demo_score(row_dict, int(is_fraud_arr[i]))
         fps[i] = fp
@@ -623,10 +623,12 @@ def initialize_data():
     now    = datetime.now()
 
     print("  Building transaction records...")
+    # Pre-convert to records lists once — avoids O(n²) repeated .iloc calls
+    raw_records = df_raw.to_dict("records")
+    eng_records = df_eng.to_dict("records") if len(df_eng) == len(df_raw) else raw_records
+
     all_txns = []
-    for i in range(len(df_raw)):
-        row_r = df_raw.iloc[i]
-        row_e = df_eng.iloc[i] if i < len(df_eng) else row_r
+    for i, (row_r, row_e) in enumerate(zip(raw_records, eng_records)):
         is_fraud_actual = int(row_r.get("is_fraud", 0))
 
         aid = str(row_r[sc_col]) if sc_col and pd.notna(row_r.get(sc_col)) else f"ACC{i:06d}"
@@ -635,19 +637,20 @@ def initialize_data():
         ts_iso = (now - timedelta(minutes=i*2)).isoformat()
         if ts_col:
             try:
-                v = row_r[ts_col]
-                if pd.api.types.is_number(v):
-                    ts_iso = (now - timedelta(hours=int(v) % 8760)).isoformat()
-                else:
-                    p = pd.to_datetime(v, format="mixed", errors="coerce")
-                    if not pd.isnull(p):
-                        ts_iso = p.isoformat()
+                v = row_r.get(ts_col)
+                if v is not None:
+                    if pd.api.types.is_number(v):
+                        ts_iso = (now - timedelta(hours=int(v) % 8760)).isoformat()
+                    else:
+                        p = pd.to_datetime(v, format="mixed", errors="coerce")
+                        if not pd.isnull(p):
+                            ts_iso = p.isoformat()
             except Exception:
                 pass
 
         fp = float(fps_batch[i])
         cs = float(css_batch[i])
-        row_dict = row_e.to_dict() if hasattr(row_e, "to_dict") else {}
+        row_dict = dict(row_e)
         row_dict["tx_id"] = f"TXN{i:07d}"
         factors = (_shap_factors(fraud_model,
                                  pd.DataFrame([{c: row_dict.get(c, 0) for c in feature_cols}])[feature_cols])
@@ -733,14 +736,20 @@ async def _background_init():
     """Run heavy init in a thread pool so uvicorn can open the port immediately."""
     loop = asyncio.get_event_loop()
     try:
+        print("[INIT] Starting model loading in background thread...")
         await loop.run_in_executor(None, load_models)
+        print("[INIT] Model loading complete.")
     except Exception as e:
         print(f"[WARN] load_models() raised unexpectedly: {e} — continuing in demo mode")
         MODEL_STATUS.update({"version": "Demo Mode", "mode": "demo"})
     try:
+        print(f"[INIT] Starting data initialisation (SAMPLE_SIZE={SAMPLE_SIZE})...")
         await loop.run_in_executor(None, initialize_data)
+        print("[INIT] Data initialisation complete.")
     except Exception as e:
+        import traceback
         print(f"[ERROR] initialize_data() failed: {e}")
+        print(traceback.format_exc())
 
 @app.on_event("startup")
 async def startup():
