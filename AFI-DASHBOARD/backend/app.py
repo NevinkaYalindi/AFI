@@ -31,7 +31,7 @@ MODEL_SEARCH_DIRS = [
     ".",
 ]
 
-SAMPLE_SIZE     = int(os.environ.get("SAMPLE_SIZE", "5000"))   # set SAMPLE_SIZE=20000 in Render env if you want full set
+SAMPLE_SIZE     = int(os.environ.get("SAMPLE_SIZE", "20000"))
 ACCOUNT_MIN_TXN = 3
 MAX_ACCOUNTS    = 40
 RANDOM_STATE    = 42
