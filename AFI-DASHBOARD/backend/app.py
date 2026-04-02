@@ -1,8 +1,7 @@
-
 # AFI Dashboard Backend - FastAPI
 
 
-import json, os, random, time, warnings
+import asyncio, json, os, random, time, warnings
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
@@ -730,17 +729,24 @@ def initialize_data():
     print("=== Initialisation complete ===\n")
 
 # Startup
-@app.on_event("startup")
-async def startup():
+async def _background_init():
+    """Run heavy init in a thread pool so uvicorn can open the port immediately."""
+    loop = asyncio.get_event_loop()
     try:
-        load_models()
+        await loop.run_in_executor(None, load_models)
     except Exception as e:
         print(f"[WARN] load_models() raised unexpectedly: {e} — continuing in demo mode")
         MODEL_STATUS.update({"version": "Demo Mode", "mode": "demo"})
     try:
-        initialize_data()
+        await loop.run_in_executor(None, initialize_data)
     except Exception as e:
         print(f"[ERROR] initialize_data() failed: {e}")
+
+@app.on_event("startup")
+async def startup():
+    # Fire-and-forget: returns immediately so uvicorn can bind the port.
+    # Models and data finish loading in the background.
+    asyncio.create_task(_background_init())
         
 # Pydantic schemas
 class TransactionInput(BaseModel):
