@@ -1,11 +1,6 @@
-"""
-AFI Dashboard Backend - FastAPI v5.3
-Fixes:
-  1. Correct model search path (../../AFITraining/models)
-  2. No RuntimeError crash — falls back to calibrated demo mode
-  3. LightGBM format errors handled gracefully via try/except on predict
-  4. Backend always starts; frontend always connects
-"""
+
+# AFI Dashboard Backend - FastAPI
+
 
 import json, os, random, time, warnings
 from datetime import datetime, timedelta
@@ -25,13 +20,10 @@ app.add_middleware(CORSMiddleware, allow_origins=[
         "http://localhost:5173"],
         allow_methods=["*"], allow_headers=["*"])
 
-# ── Model search directories (ordered: most specific first) ───────────────────
-# app.py lives at:  .../AFI/AFI-DASHBOARD/backend/app.py
-# models live at:   .../AFI/AFITraining/models/
-# Relative from backend/: ../../AFITraining/models
+
 MODEL_SEARCH_DIRS = [
-    os.environ.get("AFI_MODELS_DIR", ""),   # env override (highest priority)
-    "../../AFITraining/models",              # correct relative path from backend/
+    os.environ.get("AFI_MODELS_DIR", ""), 
+    "../../AFITraining/models",              
     "../AFITraining/models",
     "AFITraining/models",
     "models",
@@ -54,7 +46,7 @@ FEAT_FILE         = "feature_cols_2M_clean.json"
 FRAUD_CFG_FILE    = "fraud_config_2M_clean.json"
 CREDIT_CFG_FILE   = "credit_config_2M_clean.json"
 
-# ── Globals ───────────────────────────────────────────────────────────────────
+# Globals
 fraud_model   = None
 credit_model  = None
 scaler        = None
@@ -150,7 +142,7 @@ def _rec(fp, cs):
     if cs >= 40:              return "REVIEW — Borderline credit score"
     return "REJECT — Poor credit score based on transaction history"
 
-# ── Calibrated demo scoring (used when real models unavailable) ───────────────
+# Calibrated demo scoring (used when real models unavailable)
 def _demo_score(row: dict, is_fraud_actual: int) -> tuple:
     """
     Returns (fraud_probability, credit_score) using feature heuristics.
@@ -185,7 +177,7 @@ def _demo_score(row: dict, is_fraud_actual: int) -> tuple:
     cs = round((1 - fp) * 100, 2)
     return round(fp, 4), cs
 
-# ── Feature engineering ───────────────────────────────────────────────────────
+# Feature engineering
 def _engineer(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for c in ["isFraud","fraud","Fraud","Is_Fraud","is_fraud_int"]:
@@ -277,7 +269,7 @@ def _engineer(df: pd.DataFrame) -> pd.DataFrame:
         pass
     return df
 
-# ── Explanation builders ──────────────────────────────────────────────────────
+# Explanation builders
 def _heuristic_factors(row, fp):
     factors = []
     checks = [
@@ -304,7 +296,6 @@ def _heuristic_factors(row, fp):
     return factors
 
 def _shap_factors(model, X_df):
-    """Try SHAP-style contributions; silently return [] on any failure."""
     try:
         raw = model.predict(X_df, pred_contrib=True)
         contribs = raw[0][:-1]
@@ -347,7 +338,7 @@ def _credit_hist(css):
         h.insert(0, {"month": dt.strftime("%b %Y"), "score": round(s, 1)})
     return h
 
-# ── Synthetic data ────────────────────────────────────────────────────────────
+# Synthetic data
 def _synthetic(n):
     rng = np.random.default_rng(RANDOM_STATE)
     nf = int(n*0.036); nn = n - nf
@@ -378,7 +369,7 @@ def _synthetic(n):
     df = pd.concat([blk(nf, True), blk(nn, False)])
     return df.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
 
-# ── Model loading — NEVER crashes the server ──────────────────────────────────
+# Model loading
 def load_models():
     global fraud_model, credit_model, scaler, feature_cols
     global fraud_threshold, credit_threshold, MODEL_STATUS, _model_ready
@@ -402,19 +393,19 @@ def load_models():
 
     lf = lc = ls = False
 
-    # ── Feature columns ──
+    # Feature columns
     p = _find(FEAT_FILE)
     if p:
         try:
             with open(p) as f:
                 feature_cols = json.load(f)
-            print(f"  ✓ Features OK: {len(feature_cols)} features")
+            print(f"   Features OK: {len(feature_cols)} features")
         except Exception as e:
-            print(f"  ✗ Features failed: {e}")
+            print(f"   Features failed: {e}")
     else:
-        print(f"  ✗ {FEAT_FILE} not found")
+        print(f"   {FEAT_FILE} not found")
 
-    # ── Fraud model ──
+    # Fraud model
     p = _find(FRAUD_MODEL_FILE)
     if p:
         try:
@@ -424,14 +415,14 @@ def load_models():
                                  columns=feature_cols if feature_cols else ["x"])
             _ = fraud_model.predict(dummy)
             lf = True
-            print(f"  ✓ Fraud model OK: {p}")
+            print(f"   Fraud model OK: {p}")
         except Exception as e:
             fraud_model = None
-            print(f"  ✗ Fraud model failed (format/version mismatch): {e}")
+            print(f"   Fraud model failed (format/version mismatch): {e}")
     else:
-        print(f"  ✗ {FRAUD_MODEL_FILE} not found")
+        print(f"   {FRAUD_MODEL_FILE} not found")
 
-    # ── Credit model ──
+    # Credit model
     p = _find(CREDIT_MODEL_FILE)
     if p:
         try:
@@ -440,27 +431,27 @@ def load_models():
                                  columns=feature_cols if feature_cols else ["x"])
             _ = credit_model.predict(dummy)
             lc = True
-            print(f"  ✓ Credit model OK: {p}")
+            print(f"   Credit model OK: {p}")
         except Exception as e:
             credit_model = None
-            print(f"  ✗ Credit model failed (format/version mismatch): {e}")
+            print(f"   Credit model failed (format/version mismatch): {e}")
     else:
-        print(f"  ✗ {CREDIT_MODEL_FILE} not found")
+        print(f"   {CREDIT_MODEL_FILE} not found")
 
-    # ── Scaler ──
+    # Scaler
     p = _find(SCALER_FILE)
     if p:
         try:
             scaler = joblib.load(p)
             ls = True
-            print(f"  ✓ Scaler OK: {p}")
+            print(f"   Scaler OK: {p}")
         except Exception as e:
             scaler = None
-            print(f"  ✗ Scaler failed: {e}")
+            print(f"   Scaler failed: {e}")
     else:
-        print(f"  ✗ {SCALER_FILE} not found")
+        print(f"   {SCALER_FILE} not found")
 
-    # ── Configs ──
+    # Configs
     for cfg_file, attr, default, key in [
         (FRAUD_CFG_FILE,  "fraud_threshold",  0.51, "fraud_threshold"),
         (CREDIT_CFG_FILE, "credit_threshold", 0.59, "credit_threshold"),
@@ -471,11 +462,10 @@ def load_models():
                 with open(p) as f:
                     cfg = json.load(f)
                 globals()[attr] = float(cfg.get(key, default))
-                print(f"  ✓ {cfg_file}: {attr}={globals()[attr]}")
+                print(f"   {cfg_file}: {attr}={globals()[attr]}")
             except Exception:
                 pass
 
-    # ── If feature_cols loaded but smoke-test not done yet, do it now ──
     if feature_cols and fraud_model and not lf:
         try:
             dummy = pd.DataFrame(np.zeros((1, len(feature_cols))), columns=feature_cols)
@@ -497,7 +487,7 @@ def load_models():
     if _model_ready:
         ver  = "LightGBM 2M-Clean"
         mode = "production"
-        print(f"\n  ✅ All models ready — PRODUCTION mode")
+        print(f"\n   All models ready — PRODUCTION mode")
     else:
         ver  = "Demo Mode (heuristic scoring)"
         mode = "demo"
@@ -506,7 +496,7 @@ def load_models():
         if not lc:           reasons.append("credit model unavailable")
         if not ls:           reasons.append("scaler unavailable")
         if not feature_cols: reasons.append("feature list unavailable")
-        print(f"\n  ⚠️  Running in DEMO mode: {', '.join(reasons)}")
+        print(f"\n    Running in DEMO mode: {', '.join(reasons)}")
         print(f"     Dashboard will show calibrated synthetic scores.")
         print(f"     To use real models: pip install lightgbm==4.3.0")
         print(f"     and ensure model files are at: ../../AFITraining/models/")
@@ -518,12 +508,11 @@ def load_models():
     print("=== Model loading complete ===\n")
 
 
-# ── Predict with graceful fallback ────────────────────────────────────────────
+# Predict with graceful fallback
 def _predict_row(row_dict: dict, is_fraud_actual: int = 0):
-    """
-    Returns (fraud_prob, credit_score, factors).
-    Uses real model if available, otherwise calibrated demo scoring.
-    """
+    
+    #Returns (fraud_prob, credit_score, factors).
+    
     if _model_ready and feature_cols and scaler and fraud_model and credit_model:
         try:
             row = {c: 0.0 for c in feature_cols}
@@ -546,10 +535,10 @@ def _predict_row(row_dict: dict, is_fraud_actual: int = 0):
 
 
 def _predict_batch(df_eng: pd.DataFrame, is_fraud_arr):
-    """
-    Batch prediction. Returns (fps, css) numpy arrays.
-    Falls back row-by-row to demo scoring if model inference fails.
-    """
+
+    # Batch prediction. Returns (fps, css) numpy arrays.
+    # Falls back row-by-row to demo scoring if model inference fails.
+  
     n = len(df_eng)
 
     if _model_ready and feature_cols and scaler and fraud_model and credit_model:
@@ -564,10 +553,10 @@ def _predict_batch(df_eng: pd.DataFrame, is_fraud_arr):
             cps   = np.clip(credit_model.predict(X_sc), 0, 1)
             css   = (1 - cps) * 100
             flagged = int((fps > fraud_threshold).sum())
-            print(f"  ✓ Real inference: {flagged:,} flagged as fraud")
+            print(f"   Real inference: {flagged:,} flagged as fraud")
             return fps, css
         except Exception as e:
-            print(f"  ✗ Batch inference failed, using demo scoring: {e}")
+            print(f"   Batch inference failed, using demo scoring: {e}")
 
     # Demo path — vectorised calibrated scoring
     print("  ⚠ Using calibrated demo scoring")
@@ -582,7 +571,7 @@ def _predict_batch(df_eng: pd.DataFrame, is_fraud_arr):
     return fps, css
 
 
-# ── Data initialisation ───────────────────────────────────────────────────────
+# Data initialisation
 def initialize_data():
     global _all_transactions, _accounts, _fraud_alerts, _data_ready, _live_cursor
 
@@ -624,11 +613,11 @@ def initialize_data():
         print(f"  [WARN] Feature engineering error: {e}")
         df_eng = df_raw.copy()
 
-    # ── Batch scoring ──
+    # Batch scoring
     is_fraud_arr = df_raw["is_fraud"].values if "is_fraud" in df_raw.columns else np.zeros(len(df_raw))
     fps_batch, css_batch = _predict_batch(df_eng, is_fraud_arr)
 
-    # ── Column helpers ──
+    # Column helpers
     sc_col = next((c for c in ["sender_account","nameOrig","sender","account_id"] if c in df_raw.columns), None)
     rc_col = next((c for c in ["receiver_account","nameDest","receiver","merchant"] if c in df_raw.columns), None)
     ts_col = next((c for c in ["timestamp","Timestamp","date","Date"] if c in df_raw.columns), None)
@@ -740,7 +729,7 @@ def initialize_data():
     _live_cursor = 0
     print("=== Initialisation complete ===\n")
 
-# ── Startup — NEVER raises, always succeeds ───────────────────────────────────
+# Startup
 @app.on_event("startup")
 async def startup():
     try:
@@ -752,9 +741,8 @@ async def startup():
         initialize_data()
     except Exception as e:
         print(f"[ERROR] initialize_data() failed: {e}")
-        # Keep _data_ready=False; endpoints will return empty lists
-
-# ── Pydantic schemas ──────────────────────────────────────────────────────────
+        
+# Pydantic schemas
 class TransactionInput(BaseModel):
     amount:     float
     tx_type:    str           = "payment"
@@ -770,7 +758,7 @@ def _enrich(t: Dict) -> Dict:
     out["account_name"] = a["name"] if a else t.get("account_id", "Unknown")
     return out
 
-# ── API Endpoints ─────────────────────────────────────────────────────────────
+# API Endpoints
 @app.get("/api/health")
 def health():
     return {
